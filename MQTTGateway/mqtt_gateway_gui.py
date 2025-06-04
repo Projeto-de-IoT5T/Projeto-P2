@@ -74,8 +74,9 @@ def leitura_serial():
                 linha = serial_conn.readline().decode('utf-8').strip()
                 if linha:
                     log(f"[SERIAL ⬅️] {linha}")
-                    mqtt_client.publish(TOPICO_ENVIO, linha)
-                    log(f"[MQTT 📤] Enviado: {linha}")
+                    if linha.startswith("temp:"):
+                        mqtt_client.publish(TOPICO_ENVIO, linha)
+                        log(f"[MQTT 📤] Enviado: {linha}")
         except Exception as e:
             log(f"[ERRO] Leitura serial: {e}")
         time.sleep(0.1)
@@ -93,10 +94,15 @@ def on_mqtt_connect(client, userdata, flags, rc):
 def on_mqtt_message(client, userdata, msg):
     global serial_conn
     comando = msg.payload.decode('utf-8')
-    log(f"[MQTT 📥] Comando recebido: {comando}")
-    if serial_conn and serial_conn.is_open:
-        serial_conn.write((comando + "\n").encode())
-        log(f"[SERIAL ➡️] Enviado: {comando}")
+    if comando in ['CMD:OFF', 'CMD:ON']:
+        log(f"[MQTT 📥] Comando recebido: {comando}")
+        if serial_conn and serial_conn.is_open:
+            serial_conn.write((comando + "\n").encode())
+            log(f"[SERIAL ➡️] Enviado: {comando}")
+        else:
+            log("Arduino não está conectado!")
+    else:
+        log(f"Comando inválido: {comando}")
 
 # Log visual
 def log(msg):

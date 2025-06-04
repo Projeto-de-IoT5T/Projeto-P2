@@ -1,23 +1,56 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { connect } from 'mqtt';
+import { connect, MqttClient } from 'mqtt';
 import { DataService } from '../data/data.service';
+import { ConfigService } from '@nestjs/config';
+import { ExceptionsHandler } from '@nestjs/core/exceptions/exceptions-handler';
 
 @Injectable()
 export class MqttService implements OnModuleInit {
-  constructor(private readonly dataService: DataService) {}
+  private client: MqttClient;
+  private brokerUrl: string | undefined;
+  private topic: string | undefined; 
+  private mqttUser: string | undefined;
+  private mqttPassword: string | undefined;
+
+  constructor(
+    private readonly dataService: DataService,
+    private readonly configService: ConfigService
+  ) {}
 
   onModuleInit() {
-    const client = connect('mqtt://host.docker.internal:1883');
+    this.brokerUrl = this.configService.get<string>('MQTT_BROKER');
+    this.topic = this.configService.get<string>('MQTT_TOPIC');
+    this.mqttUser = this.configService.get<string>('MQTT_USER');
+    this.mqttPassword = this.configService.get<string>('MQTT_PASSWORD');
+    if (!this.brokerUrl || !this.topic) {
+      console.error('[MQTT] Variáveis de ambiente MQTT_BROKER ou MQTT_TOPIC não definidas');
+      return;
+    }
 
-    client.on('connect', () => {
-      console.log('[MQTT] Conectado!');
-      client.subscribe('monitoramento/ar');
+    try {
+      this.client = connect(this.brokerUrl, {
+        username: this.mqttUser,
+        password: this.mqttPassword,
+      });
+    } catch (err) {
+      console.log(`[MQTT] Erro ao conectar ao broker:`, err)
+    }
+
+    this.client.on('connect', () => {
+      console.log(`[MQTT] Conectado ao broker: ${this.brokerUrl}`);
+      this.client.subscribe(this.topic!, (err) => {
+        if (err) {
+          console.error(`[MQTT] Erro ao assinar o tópico "${this.topic}":`, err);
+        } else {
+          console.log(`[MQTT] Assinando tópico: ${this.topic}`);
+        }
+      });
     });
 
-    client.on('message', async (topic, message) => {
+    this.client.on('message', async (topic, message) => {
       
       try {
-        const payload = message.toString();
+        const payload = message.toString();;
         const leituras = payload.split(';')
         leituras.forEach(async (leitura) => {
           if (!leitura) return;
